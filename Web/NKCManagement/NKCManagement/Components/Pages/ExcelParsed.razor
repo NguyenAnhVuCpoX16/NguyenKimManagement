@@ -1,0 +1,36 @@
+﻿@page "/excel"
+@rendermode InteractiveServer
+<style>
+    .mud-stepper-content{
+        height: 80vh;
+        justify-items: center;
+    }
+    .mud-card-actions{
+        display: none;
+    }
+</style>
+<MudPaper>
+    <MudStepper ShowResetButton>
+        <MudStep Title="Import Excel">
+            <MudCard Style="width: 65%;height:300px;">
+                <MudCardHeader>
+                    <MudText Typo="Typo.h6">Drag and Drop</MudText>
+                </MudCardHeader>
+                <MudCardContent>
+                    <MudFileUpload T="IBrowserFile"
+                                   FilesChanged="OnFilesChanged"
+                                   DragAndDrop="true"
+                                   Accept=".xlsx,.xls" />
+                </MudCardContent>
+            </MudCard>
+        </MudStep>
+        <MudStep Title="Create an ad group" SecondaryText="Optional" Skippable="true">Create an ad group content</MudStep>
+        <MudStep Title="Create an ad">Create an ad content</MudStep>
+    </MudStepper>
+</MudPaper>
+@code {
+    private async Task OnFilesChanged(IBrowserFile files)
+    {
+        
+    }
+}
