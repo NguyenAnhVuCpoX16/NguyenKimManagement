@@ -1,0 +1,2 @@
+# NguyenKimManagement
+Vùng đất mới
