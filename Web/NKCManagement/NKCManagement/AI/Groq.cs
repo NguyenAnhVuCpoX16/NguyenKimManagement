@@ -71,7 +71,7 @@ namespace NKCManagement
             try
             {
                 _http.DefaultRequestHeaders.Clear();
-                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {AppStatic.AIKey.Groq}");
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {AppStatic.AIKey?.Groq ?? "---------------------------------"}");
                 var body = new
                 {
                     model = "llama-3.3-70b-versatile",

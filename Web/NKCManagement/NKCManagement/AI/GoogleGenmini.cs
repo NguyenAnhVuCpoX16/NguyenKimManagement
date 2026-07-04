@@ -12,7 +12,7 @@ namespace NKCManagement
     {
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         static int i = 0;
-        Google.GenAI.Client Client = new Google.GenAI.Client(apiKey: AppStatic.AIKey.Gemini);
+        Google.GenAI.Client Client = new Google.GenAI.Client(apiKey: AppStatic.AIKey?.Gemini ?? "---------------------------------");
         static Stopwatch Sw = new();
 
         public string Provider => "Google.Genmini";

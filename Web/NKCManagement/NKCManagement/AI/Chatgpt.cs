@@ -7,7 +7,7 @@ namespace NKCManagement
     public class Chatgpt : IAiService
     {
         private readonly SemaphoreSlim _semaphore = new(1, 1);
-        private ChatClient Client = new ChatClient("gpt-4o", AppStatic.AIKey.ChatGpt);
+        private ChatClient Client = new ChatClient("gpt-4o", AppStatic.AIKey?.ChatGpt ?? "---------------------------------");
 
         public string Provider => "ChatGpt";
 

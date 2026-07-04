@@ -5,13 +5,12 @@ namespace Models
 {
     public class ParsedProduct
     {
-        [AiFieldAttribute("CellExcel")]
         public string TenHangRaw { get; set; } = string.Empty;
-        [AiFieldAttribute("CellExcel")]
 
+        [AiFieldAttribute("CellExcel")]
         public string LoaiThietBi { get; set; } = "";
-        [AiFieldAttribute("CellExcel")]
 
+        [AiFieldAttribute("CellExcel")]
         public string Brand { get; set; } = "";
         [AiFieldAttribute("CellExcel")]
 
@@ -46,7 +45,7 @@ namespace Models
         public string SheetName { get; set; } = string.Empty;
         public int RowIndex { get; set; }
 
-        public List<string> MissingFields { get; } = new List<string>();
+        public List<string> MissingFields { get; set; } = new List<string>();
         public int Confidence { get; set; }
 
 

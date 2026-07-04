@@ -56,18 +56,16 @@ namespace NKCManagement
                                 Success = false,
                                 Error = "Không deserialize được kết quả AI."
                             };
-                        foreach (var property in typeof(ParsedProduct).GetProperties())
+                        foreach (var property in typeof(ParsedProduct).GetProperties().Where(p => Attribute.IsDefined(p, typeof(AiFieldAttribute))))
                         {
                             var currentValue = property.GetValue(result) as string;
 
                             if (string.IsNullOrWhiteSpace(currentValue))
                             {
                                 var newValue = property.GetValue(aiResult) as string;
-
                                 if (!string.IsNullOrWhiteSpace(newValue))
                                 {
                                     property.SetValue(result, newValue);
-                                    AppStatic.AIProcess++;
                                 }
                             }
                         }
@@ -93,7 +91,6 @@ namespace NKCManagement
         {
             var text = Normalize(raw);
             var result = new ParsedProduct { TenHangRaw = raw.Trim() };
-
             ExtractTinhTrang(text, result);
             ExtractLoaiThietBi(text, result);
             ExtractBrand(text, result);
@@ -107,9 +104,27 @@ namespace NKCManagement
             ExtractPin(text, result);
             ExtractHeDieuHanh(text, result);
             ExtractKhac(text, result);
-            result.ComputeConfidence();
-
+            result.MissingFields = GetNullProperties(result);
             return result;
+        }
+
+        public static List<string> GetNullProperties<T>(T obj)
+        {
+            if (obj == null)
+                return new List<string>();
+
+            return obj.GetType()
+                      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                      .Where(p => Attribute.IsDefined(p, typeof(AiFieldAttribute)))
+                      .Where(p =>
+                      {
+                          var value = p.GetValue(obj);
+
+                          return value == null ||
+                                 (value is string s && string.IsNullOrWhiteSpace(s));
+                      })
+                      .Select(p => p.Name)
+                      .ToList();
         }
 
         private static string Normalize(string raw) =>

@@ -4,8 +4,6 @@
 @using System.Diagnostics;
 @implements IAsyncDisposable
 @inject NKCManagement.SnackbarService Snackbar
-
-
 <style>
     .mud-stepper-content {
         min-height: 75vh;
@@ -96,19 +94,6 @@
                                 </div>
                             </MudTabPanel>
                         }
-                        @* @if (Products?.Count > 0)
-                        {
-                            <MudTabPanel Text="@($"Log({logs.Count})")">
-                                <MudDataGrid Items="@logs">
-                                    <Columns>
-                                        <PropertyColumn Property="x => x.Sheet" />
-                                        <PropertyColumn Property="x => x.TenHangRaw" />
-                                        <PropertyColumn Property="x => x.Row" />
-                                        <PropertyColumn Property="x => x.MissingFields" />
-                                    </Columns>
-                                </MudDataGrid>
-                            </MudTabPanel>
-                        } *@
                     </MudTabs>
                 }
 
@@ -155,6 +140,8 @@
 @code {
     MudStepper? _stepper;
     public List<ParsedProduct> Products = new();
+    public List<ParsedProduct> ProductsOld = new();
+    public List<ParsedProduct> ProductsNew = new();
     public List<ParseLog> logs = new List<ParseLog>();
     public List<string> TabData = new();
     public bool IsImporting { get; set; } = false;
@@ -196,17 +183,6 @@
                         parsed.SheetName = item.Key;
                         parsed.RowIndex = i + 2;
                         Products.Add(parsed);
-                        if (parsed.HasLowConfidence)
-                        {
-                            logs.Add(new ParseLog
-                            {
-                                Sheet = item.Key,
-                                Row = parsed.RowIndex,
-                                TenHangRaw = parsed.TenHangRaw,
-                                MissingFields = string.Join(", ", parsed.MissingFields),
-                                Confidence = parsed.Confidence
-                            });
-                        }
                     }
                     TabData = Products.GroupBy(x => x.SheetName).Select(x => x.Key).ToList();
                 }
@@ -259,13 +235,20 @@
         {
             try
             {
+                ProductsNew = new();
+                ProductsOld = new();
                 CurrentIndex = CurrentIndex == 0 || CurrentIndex + 1 == Products.Count ? 0 : CurrentIndex;
                 for (int i = CurrentIndex; i < Products.Count; i++)
                 {
                     if (Products[i].MissingFields.Count == 0) continue;
                     AppStatic.AIProcess = 0;
                     var result = await ParsedService.ParsedAi(Products[i]);
-                    if (result.Success) Products[i] = result?.Product;
+                    if (result.Success)
+                    {
+                        ProductsOld.Add(Products[i]);
+                        Products[i] = result?.Product;
+                        ProductsNew.Add(Products[i]);
+                    }
                     else Snackbar.Warning(result.Error);
                     if (_cts.Token.IsCancellationRequested)
                     {
@@ -285,7 +268,6 @@
         {
             await _swal.Success($"The AI ​​successfully edited {AppStatic.AIProcess} lines of data.");
         }
-        //Snackbar.Success("Ai process success!");
     }
 
     private async Task OnActiveIndexChanged(int index)
