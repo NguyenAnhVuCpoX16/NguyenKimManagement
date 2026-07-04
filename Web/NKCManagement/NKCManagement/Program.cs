@@ -25,6 +25,7 @@ builder.Services.AddMudServices(config =>
 builder.Services.AddSweetAlert2();
 builder.Services.AddScoped<ISweetAlertService, NKCManagement.Service.SweetAlertService>();
 builder.Services.AddSingleton<NKCManagement.SnackbarService>();
+builder.Configuration.GetSection("AI").Bind(AppStatic.AIKey);
 var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

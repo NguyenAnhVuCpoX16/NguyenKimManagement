@@ -7,6 +7,7 @@ namespace NKCManagement
     {
         public static bool WorkerMode { get; set; } = false;
         public static List<IAiService> AI { get; set; } = GetAI();
+        public static AIConfig AIKey { get; set; } = new();
 
         public static string AIPlatform { get;set; } = "Groq";
 
@@ -17,5 +18,12 @@ namespace NKCManagement
             var assemblies = AssembliesUtil.GetAspNetAssemblies();
             return assemblies.GetInstances<IAiService>().ToList();
         }
+    }
+
+    public class AIConfig
+    {
+        public string ChatGpt { get; set; } = string.Empty;
+        public string Groq { get; set; } = string.Empty;
+        public string Gemini { get; set; } = string.Empty;
     }
 }

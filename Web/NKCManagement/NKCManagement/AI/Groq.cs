@@ -8,7 +8,6 @@ namespace NKCManagement
     public class Groq : IAiService
     {
         public string Provider => "Groq";
-        public const string OpenKeyAI = "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";
         private readonly HttpClient _http = new();
         private readonly SemaphoreSlim _semaphore = new(1, 1);
 
@@ -72,7 +71,7 @@ namespace NKCManagement
             try
             {
                 _http.DefaultRequestHeaders.Clear();
-                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {OpenKeyAI}");
+                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {AppStatic.AIKey.Groq}");
                 var body = new
                 {
                     model = "llama-3.3-70b-versatile",

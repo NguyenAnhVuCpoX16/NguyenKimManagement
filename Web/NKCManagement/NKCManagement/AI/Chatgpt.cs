@@ -6,9 +6,8 @@ namespace NKCManagement
 {
     public class Chatgpt : IAiService
     {
-        public const string OpenKeyAI = "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";
         private readonly SemaphoreSlim _semaphore = new(1, 1);
-        private ChatClient Client = new ChatClient("gpt-4o",OpenKeyAI);
+        private ChatClient Client = new ChatClient("gpt-4o", AppStatic.AIKey.ChatGpt);
 
         public string Provider => "ChatGpt";
 

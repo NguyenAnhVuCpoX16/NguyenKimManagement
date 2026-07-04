@@ -10,10 +10,9 @@ namespace NKCManagement
 {
     public class GoogleGenmini : IAiService
     {
-        public const string OpenKeyAI = "AQ.Ab8RN6IrbiNC88kSRa0kH8WKTYxNTqtl9xMs4gSbmjyJ6WjeUA";
         private readonly SemaphoreSlim _semaphore = new(1, 1);
         static int i = 0;
-        Google.GenAI.Client Client = new Google.GenAI.Client(apiKey: OpenKeyAI);
+        Google.GenAI.Client Client = new Google.GenAI.Client(apiKey: AppStatic.AIKey.Gemini);
         static Stopwatch Sw = new();
 
         public string Provider => "Google.Genmini";
