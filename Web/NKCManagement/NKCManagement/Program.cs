@@ -1,4 +1,7 @@
+using CurrieTechnologies.Razor.SweetAlert2;
+using MudBlazor;
 using MudBlazor.Services;
+using NKCManagement;
 using NKCManagement.Components;
 using Syncfusion.Blazor;
 
@@ -8,7 +11,20 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddSyncfusionBlazor();
-builder.Services.AddMudServices();
+builder.Services.AddMudServices(config =>
+{
+    config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+
+    config.SnackbarConfiguration.PreventDuplicates = true;
+    config.SnackbarConfiguration.NewestOnTop = true;
+    config.SnackbarConfiguration.ShowCloseIcon = true;
+    config.SnackbarConfiguration.VisibleStateDuration = 4000;
+    config.SnackbarConfiguration.HideTransitionDuration = 200;
+    config.SnackbarConfiguration.ShowTransitionDuration = 200;
+});
+builder.Services.AddSweetAlert2();
+builder.Services.AddScoped<ISweetAlertService, NKCManagement.Service.SweetAlertService>();
+builder.Services.AddSingleton<NKCManagement.SnackbarService>();
 var app = builder.Build();
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())

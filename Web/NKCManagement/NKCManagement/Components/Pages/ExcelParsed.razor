@@ -1,36 +1,319 @@
 ﻿@page "/excel"
-@rendermode InteractiveServer
+@inject ISweetAlertService _swal
+@inject IJSRuntime JS
+@using System.Diagnostics;
+@implements IAsyncDisposable
+@inject NKCManagement.SnackbarService Snackbar
+
+
 <style>
-    .mud-stepper-content{
-        height: 80vh;
+    .mud-stepper-content {
+        min-height: 75vh;
+        max-width: 85vw;
         justify-items: center;
+        align-content: center;
+        overflow: hidden;
     }
-    .mud-card-actions{
-        display: none;
+
+    .mud-tabs-panels {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .mud-table-container {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .center-content {
+        justify-self: center;
+        text-align: center;
+    }
+
+    .grid-wrapper {
+        width: 100%;
+        overflow-x: auto;
+    }
+
+    .mud-tabs {
+        width: 80vw;
     }
 </style>
-<MudPaper>
-    <MudStepper ShowResetButton>
-        <MudStep Title="Import Excel">
-            <MudCard Style="width: 65%;height:300px;">
-                <MudCardHeader>
-                    <MudText Typo="Typo.h6">Drag and Drop</MudText>
-                </MudCardHeader>
-                <MudCardContent>
-                    <MudFileUpload T="IBrowserFile"
-                                   FilesChanged="OnFilesChanged"
-                                   DragAndDrop="true"
-                                   Accept=".xlsx,.xls" />
-                </MudCardContent>
-            </MudCard>
-        </MudStep>
-        <MudStep Title="Create an ad group" SecondaryText="Optional" Skippable="true">Create an ad group content</MudStep>
-        <MudStep Title="Create an ad">Create an ad content</MudStep>
+<MudPaper Style="overflow:auto;max-width:100%;">
+    <MudStepper @ref="_stepper" ActiveIndexChanged="OnActiveIndexChanged">
+        <LabelTemplate Context="context">
+            @if (ActiveIndex == 1 && context.IsActive && IsProcessing)
+            {
+                <MudProgressCircular Color="Color.Info" Indeterminate="true" Size="Size.Large" />
+            }
+        </LabelTemplate>
+        <ChildContent>
+            <MudStep Title="Import Excel" SecondaryText="Process">
+                <MudCard Style="width: 65%;height:300px;">
+                    <MudCardHeader>
+                        <MudText Typo="Typo.h6">Drag and Drop</MudText>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudFileUpload T="IBrowserFile"
+                                       FilesChanged="OnFilesChanged"
+                                       DragAndDrop="true"
+                                       Accept=".xlsx,.xls" />
+                    </MudCardContent>
+                </MudCard>
+            </MudStep>
+            <MudStep Title="View data" SecondaryText="Optional" Skippable="true">
+                @if (IsImporting)
+                {
+                    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
+                        @foreach (var tab in TabData)
+                        {
+                            <MudTabPanel Text="@($"{tab}({Products.Where(x => x.SheetName == tab).Count()})")" Class="grid-container">
+                                <div class="grid-wrapper">
+                                    <MudDataGrid Items="@Products.Where(x => x.SheetName == tab)"
+                                                 Dense="true"
+                                                 Hover="true"
+                                                 Virtualize="true"
+                                                 HorizontalScrollbar="true"
+                                                 FixedHeader="true"
+                                                 Height="65vh"
+                                                 Style="width:100%;">
+                                        <Columns>
+                                            <PropertyColumn Property="x => x.TenHangRaw" />
+                                            <PropertyColumn Property="x => x.LoaiThietBi" />
+                                            <PropertyColumn Property="x => x.Brand" />
+                                            <PropertyColumn Property="x => x.Model" />
+                                            <PropertyColumn Property="x => x.Cpu" />
+                                            <PropertyColumn Property="x => x.Ram" />
+                                            <PropertyColumn Property="x => x.Storage" />
+                                            <PropertyColumn Property="x => x.Gpu" />
+                                            <PropertyColumn Property="x => x.TinhTrang" />
+                                            <PropertyColumn Property="x => x.ManHinh" />
+                                            <PropertyColumn Property="x => x.Pin" />
+                                            <PropertyColumn Property="x => x.HeDieuHanh" />
+                                            <PropertyColumn Property="x => x.Khac" />
+                                        </Columns>
+                                    </MudDataGrid>
+                                </div>
+                            </MudTabPanel>
+                        }
+                        @* @if (Products?.Count > 0)
+                        {
+                            <MudTabPanel Text="@($"Log({logs.Count})")">
+                                <MudDataGrid Items="@logs">
+                                    <Columns>
+                                        <PropertyColumn Property="x => x.Sheet" />
+                                        <PropertyColumn Property="x => x.TenHangRaw" />
+                                        <PropertyColumn Property="x => x.Row" />
+                                        <PropertyColumn Property="x => x.MissingFields" />
+                                    </Columns>
+                                </MudDataGrid>
+                            </MudTabPanel>
+                        } *@
+                    </MudTabs>
+                }
+
+            </MudStep>
+            <MudStep Title="Export" Class="center-content">
+                <MudImage Src="/image/checked.png"></MudImage>
+                <MudAlert Severity="Severity.Success">File processing complete</MudAlert>
+            </MudStep>
+        </ChildContent>
+        <ActionContent Context="stepper">
+            @if (ActiveIndex == 1)
+            {
+                <MudButton StartIcon="@Icons.Material.Filled.Refresh" Variant="Variant.Filled" Color="Color.Secondary" OnClick="@(async () => await StepResetAsync())">Reset</MudButton>
+            }
+            @if (ActiveIndex == 2)
+            {
+                <MudButton StartIcon="@Icons.Material.Filled.SkipPrevious" Variant="Variant.Filled" Color="Color.Secondary" OnClick="@(async () => await stepper.PreviousStepAsync())">Previous</MudButton>
+
+            }
+            <MudSpacer />
+            @if (ActiveIndex == 1)
+            {
+                <MudButton StartIcon="@Icons.Material.Filled.AutoAwesome" Variant="@(IsAiProcessing ? Variant.Text : Variant.Filled)" Color="Color.Warning" OnClick="@(async () => { await AIReprocessing(); })">
+                    @if (IsAiProcessing)
+                    {
+                        <MudProgressCircular Color="Color.Warning" Indeterminate="true" Size="Size.Small" />
+                        <span>@($"({CurrentIndex}/{Products.Count})")</span>
+                    }
+                    else
+                    {
+                        <span>AI Reprocessing</span>
+                    }
+                </MudButton>
+
+                <MudButton StartIcon="@Icons.Material.Filled.Download" Class="px-4" Style="margin: 0 6px;" Variant="Variant.Filled" Color="Color.Tertiary" Disabled="@(IsAiProcessing || IsProcessing)" OnClick="@(() => stepper.NextStepAsync())">Export</MudButton>
+            }
+            @if (ActiveIndex == 2)
+            {
+                <MudButton StartIcon="@Icons.Material.Filled.FileDownloadDone" Variant="Variant.Filled" OnClick="@(async () => await StepResetAsync())" Size="Size.Large" Color="Color.Tertiary">Complete</MudButton>
+            }
+        </ActionContent>
     </MudStepper>
 </MudPaper>
 @code {
+    MudStepper? _stepper;
+    public List<ParsedProduct> Products = new();
+    public List<ParseLog> logs = new List<ParseLog>();
+    public List<string> TabData = new();
+    public bool IsImporting { get; set; } = false;
+    private int _activeIndex;
+    public bool IsProcessing { get; set; } = false;
+    public bool IsAiProcessing { get; set; } = false;
+    public int ActiveIndex = 0;
+    private int CurrentIndex = 0;
+    CancellationTokenSource _cts = new();
+
+    private readonly Stopwatch _watch = new();
     private async Task OnFilesChanged(IBrowserFile files)
     {
-        
+        if (files == null)
+        {
+            return;
+        }
+        try
+        {
+            await _swal.Loading("Processing Excel file...");
+            await using var browserStream = files.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+            using var memoryStream = new MemoryStream();
+            await browserStream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+            var excelData = await Excel.ReadAllSheetsAsync(memoryStream);
+            await _swal.Close();
+            if (excelData != null)
+            {
+                logs = new();
+                Products = new();
+                IsImporting = true;
+                IsProcessing = true;
+                await _stepper?.NextStepAsync();
+                foreach (var item in excelData)
+                {
+                    for (int i = 0; i < item.Value.Count; i++)
+                    {
+                        var parsed = await ParsedService.ParseCode(item.Value[i]);
+                        parsed.SheetName = item.Key;
+                        parsed.RowIndex = i + 2;
+                        Products.Add(parsed);
+                        if (parsed.HasLowConfidence)
+                        {
+                            logs.Add(new ParseLog
+                            {
+                                Sheet = item.Key,
+                                Row = parsed.RowIndex,
+                                TenHangRaw = parsed.TenHangRaw,
+                                MissingFields = string.Join(", ", parsed.MissingFields),
+                                Confidence = parsed.Confidence
+                            });
+                        }
+                    }
+                    TabData = Products.GroupBy(x => x.SheetName).Select(x => x.Key).ToList();
+                }
+
+                IsProcessing = false;
+                StateHasChanged();
+            }
+            else
+            {
+                await _swal.Error("Failed to process the Excel file.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await _swal.Error("An error occurred while processing the Excel file: " + ex.ToString());
+            IsProcessing = false;
+            StateHasChanged();
+        }
+
+    }
+
+    private async Task StepResetAsync()
+    {
+        await _stepper.ResetAsync();
+        IsImporting = false;
+        IsProcessing = false;
+        IsAiProcessing = false;
+        if (_cts.IsCancellationRequested)
+        {
+            _cts = new();
+        }
+        else _cts.Cancel();
+    }
+
+    private async Task AIReprocessing()
+    {
+        if (_cts.Token.IsCancellationRequested)
+        {
+            _cts = new();
+        }
+        if (IsAiProcessing)
+        {
+            _cts.Cancel();
+            IsAiProcessing = false;
+            return;
+        }
+        IsAiProcessing = true;
+        StateHasChanged();
+        await Task.Run(async () =>
+        {
+            try
+            {
+                CurrentIndex = CurrentIndex == 0 || CurrentIndex + 1 == Products.Count ? 0 : CurrentIndex;
+                for (int i = CurrentIndex; i < Products.Count; i++)
+                {
+                    if (Products[i].MissingFields.Count == 0) continue;
+                    AppStatic.AIProcess = 0;
+                    var result = await ParsedService.ParsedAi(Products[i]);
+                    if (result.Success) Products[i] = result?.Product;
+                    else Snackbar.Warning(result.Error);
+                    if (_cts.Token.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    CurrentIndex = i + 1;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Error(ex.Message);
+            }
+        }, _cts.Token);
+        IsAiProcessing = false;
+        if (AppStatic.AIProcess > 0)
+        {
+            await _swal.Success($"The AI ​​successfully edited {AppStatic.AIProcess} lines of data.");
+        }
+        //Snackbar.Success("Ai process success!");
+    }
+
+    private async Task OnActiveIndexChanged(int index)
+    {
+        ActiveIndex = index;
+        if (!IsImporting || index == 0)
+        {
+            await StepResetAsync();
+        }
+        if (index == 2)
+        {
+            if (Products?.Count != 0)
+            {
+                var stream = Excel.Write(Products, logs);
+
+                using var streamRef = new DotNetStreamReference(stream);
+
+                await JS.InvokeVoidAsync(
+                    "downloadFileFromStream",
+                    "Result.xlsx",
+                    streamRef);
+            }
+        }
+    }
+    public async ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        await Task.CompletedTask;
     }
 }

@@ -9,7 +9,10 @@
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="CurrieTechnologies.Razor.SweetAlert2" Version="5.6.0" />
+    <PackageReference Include="Google.GenAI" Version="1.12.0" />
     <PackageReference Include="MudBlazor" Version="9.6.0" />
+    <PackageReference Include="OpenAI" Version="2.12.0" />
     <PackageReference Include="Syncfusion.Blazor.Spreadsheet" Version="33.2.15" />
     <PackageReference Include="Syncfusion.Blazor.Themes" Version="33.2.15" />
   </ItemGroup>

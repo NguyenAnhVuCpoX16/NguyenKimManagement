@@ -1,20 +1,46 @@
-﻿namespace Models
+﻿using NKCManagement;
+using System.ComponentModel.DataAnnotations;
+
+namespace Models
 {
     public class ParsedProduct
     {
+        [AiFieldAttribute("CellExcel")]
         public string TenHangRaw { get; set; } = string.Empty;
+        [AiFieldAttribute("CellExcel")]
+
         public string LoaiThietBi { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
+
         public string Brand { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
+
         public string Model { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
         public string PartNumber { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
         public string Cpu { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
         public string Ram { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string Storage { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string Gpu { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string TinhTrang { get; set; } = "";
+        [AiFieldAttribute("CellExcel")]
         public string ManHinh { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string Pin { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string HeDieuHanh { get; set; } = "";
+
+        [AiFieldAttribute("CellExcel")]
         public string Khac { get; set; } = "";
 
         public string SheetName { get; set; } = string.Empty;

@@ -1,11 +1,12 @@
-﻿using ClosedXML.Excel;
-using Microsoft.AspNetCore.Components.Forms;
-using Models;
+﻿using Models;
+using System.Reflection;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace NKCManagement.Classes
+namespace NKCManagement
 {
-    public class Parsed
+    public class ParsedService
     {
         private static readonly string[] KnownBrands = new string[]
         {
@@ -14,72 +15,146 @@ namespace NKCManagement.Classes
             "MSI", "Gigabyte", "Intel", "Tomko"
         };
 
-        public static List<CellModel> Parse(string raw)
+        public static string CreateRequestAI(ParsedProduct product)
         {
-            var list = new List<CellModel>();
-            var text = Normalize(raw);
-            list.Add(new CellModel { ColumnIndex = 1,Value = raw.Trim() });
-            list.Add(new CellModel() {ColumnIndex = 2,Value = ExtractTinhTrang(text) });
-            list.Add(new CellModel() {ColumnIndex = 3,Value = ExtractLoaiThietBi(text) });
-            list.Add(new CellModel() {ColumnIndex = 4,Value = ExtractBrand(text) });
-            list.Add(new CellModel() {ColumnIndex = 5,Value = ExtractCpu(text) });
-            list.Add(new CellModel() {ColumnIndex = 6,Value = ExtractRam(text) });
-            list.Add(new CellModel() {ColumnIndex = 7,Value = ExtractGpu(text) });
-            list.Add(new CellModel() {ColumnIndex = 8,Value = ExtractManHinh(text) });
-            list.Add(new CellModel() {ColumnIndex = 9,Value = ExtractPin(text) });
-            list.Add(new CellModel() {ColumnIndex = 10,Value = ExtractHeDieuHanh(text) });
-            list.Add(new CellModel() { ColumnIndex = 11, Value = ExtractKhac(text) });
+            if (product.MissingFields?.Count == 0) return string.Empty;
+            var missingFields = product.MissingFields;
+            var sb = new StringBuilder();
+            sb.AppendLine("Extract ONLY these fields from the product description.");
+            sb.AppendLine();
+            sb.AppendLine("Return ONE JSON object only.");
+            sb.AppendLine("Unknown => null.");
+            sb.AppendLine("No markdown.");
+            sb.AppendLine("No explanation.");
+            sb.AppendLine();
+            sb.AppendLine("Fields:");
+            foreach (var field in missingFields)
+            {
+                sb.AppendLine($"- {field}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Input:");
+            sb.AppendLine(product.TenHangRaw);
+            return sb.ToString();
+        }
 
-            //result.ComputeConfidence();
-            return list;
+        public static async Task<ParsedAiResult> ParsedAi(ParsedProduct result)
+        {
+            var request = CreateRequestAI(result);
+            if (!string.IsNullOrWhiteSpace(request))
+            {
+                try
+                {
+                    var Ai = AppStatic.AI.FirstOrDefault(x => x.Provider == AppStatic.AIPlatform);
+                    var respone = await Ai.Prompt(request);
+                    if (respone != null)
+                    {
+                        var aiResult = JsonSerializer.Deserialize<ParsedProduct>(respone.AICleanResponse());
+                        if (aiResult == null)
+                            return new ParsedAiResult
+                            {
+                                Success = false,
+                                Error = "Không deserialize được kết quả AI."
+                            };
+                        foreach (var property in typeof(ParsedProduct).GetProperties())
+                        {
+                            var currentValue = property.GetValue(result) as string;
+
+                            if (string.IsNullOrWhiteSpace(currentValue))
+                            {
+                                var newValue = property.GetValue(aiResult) as string;
+
+                                if (!string.IsNullOrWhiteSpace(newValue))
+                                {
+                                    property.SetValue(result, newValue);
+                                    AppStatic.AIProcess++;
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    return new ParsedAiResult
+                    {
+                        Success = false,
+                        Error = ex.Message
+                    };
+                }
+            }
+            return new ParsedAiResult
+            {
+                Success = true,
+                Product = result
+            };
+        }
+
+        public static async Task<ParsedProduct> ParseCode(string raw)
+        {
+            var text = Normalize(raw);
+            var result = new ParsedProduct { TenHangRaw = raw.Trim() };
+
+            ExtractTinhTrang(text, result);
+            ExtractLoaiThietBi(text, result);
+            ExtractBrand(text, result);
+            ExtractModel(text, result);
+            ExtractPartNumber(text, result);
+            ExtractCpu(text, result);
+            ExtractRam(text, result);
+            ExtractStorage(text, result);
+            ExtractGpu(text, result);
+            ExtractManHinh(text, result);
+            ExtractPin(text, result);
+            ExtractHeDieuHanh(text, result);
+            ExtractKhac(text, result);
+            result.ComputeConfidence();
+
+            return result;
         }
 
         private static string Normalize(string raw) =>
             Regex.Replace(raw.Trim(), @"\s+", " ");
 
-        private static string ExtractTinhTrang(string text)
+        private static void ExtractTinhTrang(string text, ParsedProduct r)
         {
-
             if (Regex.IsMatch(text, @"(?i)(h[àa]ng\s+m[ớo]i\s*100%|m[ớo]i\s*100%|hang\s+moi\s*100%)"))
-                return  "Mới 100%";
-            return "";
+                r.TinhTrang = "Mới 100%";
         }
 
-        private static string ExtractLoaiThietBi(string text)
+        private static void ExtractLoaiThietBi(string text, ParsedProduct r)
         {
             if (Regex.IsMatch(text, @"(?i)m[áa]y\s+t[íi]nh\s+b[ảa]ng"))
-                return "Máy tính bảng";
+                r.LoaiThietBi = "Máy tính bảng";
             else if (Regex.IsMatch(text, @"(?i)m[áa]y\s+(vi\s+)?t[íi]nh\s+x[áa]ch\s+tay"))
-                return "Laptop";
+                r.LoaiThietBi = "Laptop";
             else if (Regex.IsMatch(text, @"(?i)m[áa]y\s+(vi\s+)?t[íi]nh\s+(c[áa]\s+nh[âa]n\s+)?(đ[ểe]\s+b[àa]n|đ[ểe]\s+b[àa]n)"))
-                return "Desktop";
+                r.LoaiThietBi = "Desktop";
             else if (Regex.IsMatch(text, @"(?i)(b[ộo]\s+m[áa]y\s+x[ửu]\s+l[ý]|m[áa]y\s+x[ửu]\s+l[íi]\s+d[ữu]\s+li[ệe]u)"))
-                return "Desktop";
-            return "";
+                r.LoaiThietBi = "Desktop";
         }
 
-        private static string ExtractBrand(string text)
+        private static void ExtractBrand(string text, ParsedProduct r)
         {
             var m = Regex.Match(text, @"(?i)hi[ệe]u\s+([A-Za-z0-9]+)");
-            if (m.Success) { return NormalizeBrand(m.Groups[1].Value); }
+            if (m.Success) { r.Brand = NormalizeBrand(m.Groups[1].Value); return; }
 
             m = Regex.Match(text, @"(?i)\bNH\s*:\s*([A-Za-z0-9]+)");
-            if (m.Success) { return NormalizeBrand(m.Groups[1].Value); }
+            if (m.Success) { r.Brand = NormalizeBrand(m.Groups[1].Value); return; }
 
             if (Regex.IsMatch(text, @"(?i)\b(Macbook|MBA|MBP)\b"))
             {
-                return "Apple";
+                r.Brand = "Apple";
+                return;
             }
 
             foreach (var brand in KnownBrands.OrderByDescending(b => b.Length))
             {
                 if (Regex.IsMatch(text, $@"(?i)\b{Regex.Escape(brand)}\b"))
                 {
-                    return  NormalizeBrand(brand);
-                    
+                    r.Brand = NormalizeBrand(brand);
+                    return;
                 }
             }
-            return "";
         }
 
         private static string NormalizeBrand(string brand)
@@ -109,7 +184,7 @@ namespace NKCManagement.Classes
             }
         }
 
-        private static string ExtractModel(string text)
+        private static void ExtractModel(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -133,13 +208,13 @@ namespace NKCManagement.Classes
                 var m = Regex.Match(text, pattern);
                 if (m.Success)
                 {
-                    return m.Groups[1].Value.Trim().TrimEnd('.');
+                    r.Model = m.Groups[1].Value.Trim().TrimEnd('.');
+                    return;
                 }
             }
-            return "";
         }
 
-        private static string ExtractPartNumber(string text)
+        private static void ExtractPartNumber(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -155,13 +230,13 @@ namespace NKCManagement.Classes
                 var m = Regex.Match(text, pattern);
                 if (m.Success)
                 {
-                    return m.Groups.Count > 1 ? m.Groups[1].Value.Trim().TrimEnd('.') : m.Value.Trim().TrimEnd('.');
+                    r.PartNumber = m.Groups.Count > 1 ? m.Groups[1].Value.Trim().TrimEnd('.') : m.Value.Trim().TrimEnd('.');
+                    return;
                 }
             }
-            return "";
         }
 
-        private static string ExtractCpu(string text)
+        private static void ExtractCpu(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -185,37 +260,37 @@ namespace NKCManagement.Classes
                                 "CPU:",
                                 "",
                                 RegexOptions.IgnoreCase);
-                    return CleanSpec(cpu.Trim());
+                    r.Cpu = CleanSpec(cpu.Trim());
+                    return;
                 }
             }
-             return"";
         }
 
-        private static string ExtractRam(string text)
+        private static void ExtractRam(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
-                @"(?i)Ram\s*:\s*(\d+)\s*GB",
-                @"(?i)(?:\(|,|\s)(\d+)\s*GB\s*RAM",
-                @"(?i)(\d+)GB\s*Ram\b",
-                @"(?i)(\d+)GB\s*RAM\b",
-                @"(?i)(\d+)G\s*RAM\b",
-                @"(?i)1\s*\*\s*(\d+)G\b",
-                @"(?i)/(\d+)GB(?=/|\s|,|$)"
-            };
+            @"(?i)Ram\s*:\s*(\d+)\s*GB",
+            @"(?i)(?:\(|,|\s)(\d+)\s*GB\s*RAM",
+            @"(?i)(\d+)GB\s*Ram\b",
+            @"(?i)(\d+)GB\s*RAM\b",
+            @"(?i)(\d+)G\s*RAM\b",
+            @"(?i)1\s*\*\s*(\d+)G\b",
+            @"(?i)/(\d+)GB(?=/|\s|,|$)"
+        };
 
             foreach (var pattern in patterns)
             {
                 var m = Regex.Match(text, pattern);
                 if (m.Success)
                 {
-                    return $"{m.Groups[1].Value}GB";
+                    r.Ram = $"{m.Groups[1].Value}GB";
+                    return;
                 }
             }
-            return "";
         }
 
-        private static string ExtractStorage(string text)
+        private static void ExtractStorage(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -236,19 +311,18 @@ namespace NKCManagement.Classes
                 if (m.Success)
                 {
                     var val = m.Groups[1].Value;
-                    string Storage = val.EndsWith("GB", StringComparison.OrdinalIgnoreCase) ||
+                    r.Storage = val.EndsWith("GB", StringComparison.OrdinalIgnoreCase) ||
                                 val.EndsWith("TB", StringComparison.OrdinalIgnoreCase)
                         ? val.ToUpperInvariant()
                         : int.TryParse(val, out var n) && n <= 4 ? $"{val}GB" : $"{val}GB";
                     if (Regex.IsMatch(text, $@"(?i){val}\s*T\b") || Regex.IsMatch(text, $@"(?i)/{val}T\b"))
-                        return $"{val}TB";
-                    return Storage;
+                        r.Storage = $"{val}TB";
+                    return;
                 }
             }
-            return "";
         }
 
-        private static string ExtractGpu(string text)
+        private static void ExtractGpu(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -270,13 +344,13 @@ namespace NKCManagement.Classes
                                     "VGA:",
                                     "",
                                     RegexOptions.IgnoreCase);
-                    return CleanSpec(cpu.Trim());
+                    r.Gpu = CleanSpec(cpu.Trim());
+                    return;
                 }
             }
-                    return "";
         }
 
-        private static string ExtractManHinh(string text)
+        private static void ExtractManHinh(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -293,21 +367,20 @@ namespace NKCManagement.Classes
                 if (m.Success)
                 {
                     var val = m.Groups[1].Value.Trim();
-                    return val.Contains('"') ? val : $"{val}\"";
+                    r.ManHinh = val.Contains('"') ? val : $"{val}\"";
+                    return;
                 }
             }
-                    return "";
         }
 
-        private static string ExtractPin(string text)
+        private static void ExtractPin(string text, ParsedProduct r)
         {
             var m = Regex.Match(text, @"(?i)(\d+)\s*mAh");
             if (m.Success)
-                return $"{m.Groups[1].Value}mAh";
-            return "";
+                r.Pin = $"{m.Groups[1].Value}mAh";
         }
 
-        private static string ExtractHeDieuHanh(string text)
+        private static void ExtractHeDieuHanh(string text, ParsedProduct r)
         {
             var patterns = new[]
             {
@@ -326,13 +399,13 @@ namespace NKCManagement.Classes
                 var m = Regex.Match(text, pattern);
                 if (m.Success)
                 {
-                    return CleanSpec(m.Value);
+                    r.HeDieuHanh = CleanSpec(m.Value);
+                    return;
                 }
             }
-                    return "";
         }
 
-        private static string ExtractKhac(string text)
+        private static void ExtractKhac(string text, ParsedProduct r)
         {
             var extras = new List<string>();
 
@@ -366,12 +439,10 @@ namespace NKCManagement.Classes
             }
 
             if (extras.Count > 0)
-                return string.Join(", ", extras.Distinct(StringComparer.OrdinalIgnoreCase));
-            return "";
+                r.Khac = string.Join(", ", extras.Distinct(StringComparer.OrdinalIgnoreCase));
         }
 
         private static string CleanSpec(string value) =>
             Regex.Replace(value.Trim().TrimEnd('.', ','), @"\s+", " ");
-
     }
 }

@@ -1,17 +1,28 @@
 ﻿@inherits LayoutComponentBase
+@inject ISnackbar Snackbar
+@inject NKCManagement.SnackbarService SnackbarService
+
+
 <MudThemeProvider />
 <MudPopoverProvider />
+<MudSnackbarProvider />
+
 
 <div class="page">
     <div class="sidebar">
         <NavMenu />
     </div>
-
     <main>
         <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            <div class="select-ai">
+                <MudSelect T="string" @bind-Value="@(AppStatic.AIPlatform)" AnchorOrigin="Origin.CenterCenter" TransformOrigin="Origin.CenterCenter" Variant="Variant.Text" AdornmentIcon="@Icons.Material.Filled.OpenWith" Adornment="Adornment.Start" AdornmentColor="Color.Warning">
+                    @foreach (var item in AppStatic.AI)
+                    {
+                        <MudSelectItem Value="@(item.Provider)">@(item.Provider)</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
         </div>
-
         <article class="content px-4">
             @Body
         </article>
@@ -23,3 +34,10 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+@code
+{
+    protected override void OnInitialized()
+    {
+        SnackbarService.Initialize(Snackbar);
+    }
+}
