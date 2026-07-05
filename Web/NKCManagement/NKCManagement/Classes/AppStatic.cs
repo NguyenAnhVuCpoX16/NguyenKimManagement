@@ -11,7 +11,8 @@ namespace NKCManagement
 
         public static string AIPlatform { get;set; } = "Groq";
 
-        public static int AIProcess {  get; set; } = 0;
+        public static IAiService _cachedAi;
+        public static IAiService AiProcess =>_cachedAi ??=AppStatic.AI.First(x => x.Provider == AppStatic.AIPlatform);
 
         private static List<IAiService> GetAI()
         {

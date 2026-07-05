@@ -48,6 +48,8 @@ namespace Models
         public List<string> MissingFields { get; set; } = new List<string>();
         public int Confidence { get; set; }
 
+        public string LogAiResult = string.Empty;
+
 
         public static readonly string[] OutputHeaders = new string[]
         {

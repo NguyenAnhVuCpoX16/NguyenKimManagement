@@ -8,6 +8,11 @@ namespace NKCManagement
 {
     public class ParsedService
     {
+        private static readonly PropertyInfo[] AiProperties =
+                typeof(ParsedProduct)
+                .GetProperties()
+                .Where(p => Attribute.IsDefined(p, typeof(AiFieldAttribute)))
+                .ToArray();
         private static readonly string[] KnownBrands = new string[]
         {
             "Samsung", "Lenovo", "Dell", "Acer", "Asus", "ASUS", "HP", "Apple", "Macbook",
@@ -38,25 +43,23 @@ namespace NKCManagement
             return sb.ToString();
         }
 
-        public static async Task<ParsedAiResult> ParsedAi(ParsedProduct result)
+        public static async Task<ParsedProduct> ParsedAi(ParsedProduct result)
         {
             var request = CreateRequestAI(result);
             if (!string.IsNullOrWhiteSpace(request))
             {
                 try
                 {
-                    var Ai = AppStatic.AI.FirstOrDefault(x => x.Provider == AppStatic.AIPlatform);
-                    var respone = await Ai.Prompt(request);
+                    var respone = await AppStatic.AiProcess.Prompt(request);
                     if (respone != null)
                     {
                         var aiResult = JsonSerializer.Deserialize<ParsedProduct>(respone.AICleanResponse());
                         if (aiResult == null)
-                            return new ParsedAiResult
-                            {
-                                Success = false,
-                                Error = "Không deserialize được kết quả AI."
-                            };
-                        foreach (var property in typeof(ParsedProduct).GetProperties().Where(p => Attribute.IsDefined(p, typeof(AiFieldAttribute))))
+                        {
+                            result.LogAiResult = $"{result.SheetName} - {result.RowIndex} - {result.TenHangRaw}: Không deserialize được kết quả AI.";
+                           return result;
+                        }
+                        foreach (var property in AiProperties)
                         {
                             var currentValue = property.GetValue(result) as string;
 
@@ -69,22 +72,16 @@ namespace NKCManagement
                                 }
                             }
                         }
+                        return result;
                     }
                 }
                 catch (Exception ex)
                 {
-                    return new ParsedAiResult
-                    {
-                        Success = false,
-                        Error = ex.Message
-                    };
+                    result.LogAiResult = $"{result.SheetName} - {result.RowIndex} - {result.TenHangRaw}: {ex.Message}";
+                    return result;
                 }
             }
-            return new ParsedAiResult
-            {
-                Success = true,
-                Product = result
-            };
+            return result;
         }
 
         public static async Task<ParsedProduct> ParseCode(string raw)
@@ -97,8 +94,8 @@ namespace NKCManagement
             ExtractModel(text, result);
             ExtractPartNumber(text, result);
             ExtractCpu(text, result);
-            ExtractRam(text, result);
-            ExtractStorage(text, result);
+            //ExtractRam(text, result);
+            //ExtractStorage(text, result);
             ExtractGpu(text, result);
             ExtractManHinh(text, result);
             ExtractPin(text, result);
@@ -112,19 +109,19 @@ namespace NKCManagement
         {
             if (obj == null)
                 return new List<string>();
+            var result = new List<string>();
+            foreach (var property in AiProperties)
+            {
+                var value = property.GetValue(obj);
 
-            return obj.GetType()
-                      .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                      .Where(p => Attribute.IsDefined(p, typeof(AiFieldAttribute)))
-                      .Where(p =>
-                      {
-                          var value = p.GetValue(obj);
+                if (value == null ||
+                    (value is string s && string.IsNullOrWhiteSpace(s)))
+                {
+                    result.Add(property.Name);
+                }
+            }
 
-                          return value == null ||
-                                 (value is string s && string.IsNullOrWhiteSpace(s));
-                      })
-                      .Select(p => p.Name)
-                      .ToList();
+            return result;
         }
 
         private static string Normalize(string raw) =>

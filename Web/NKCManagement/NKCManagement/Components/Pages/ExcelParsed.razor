@@ -42,7 +42,17 @@
         <LabelTemplate Context="context">
             @if (ActiveIndex == 1 && context.IsActive && IsProcessing)
             {
-                <MudProgressCircular Color="Color.Info" Indeterminate="true" Size="Size.Large" />
+                <MudProgressCircular Color="Color.Success" Indeterminate="true" Size="Size.Large">
+                    <ChildContent>
+                        @($"{(double)ProcessBar / TotalRow * 100:F0}%")
+                    </ChildContent>
+                </MudProgressCircular>
+            }
+            else if (ActiveIndex == 1 && context.IsActive && !IsProcessing)
+            {
+                <MudAvatar Color="Color.Success" Variant="Variant.Filled">
+                    <MudIcon Icon="@Icons.Material.Filled.Done" />
+                </MudAvatar>
             }
         </LabelTemplate>
         <ChildContent>
@@ -60,7 +70,7 @@
                 </MudCard>
             </MudStep>
             <MudStep Title="View data" SecondaryText="Optional" Skippable="true">
-                @if (IsImporting)
+                @if (Products?.Count > 0)
                 {
                     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true">
                         @foreach (var tab in TabData)
@@ -94,9 +104,28 @@
                                 </div>
                             </MudTabPanel>
                         }
+                        @if (Logs?.Count > 0)
+                        {
+                            <MudTabPanel Text="Log" Class="grid-container">
+                                <div class="grid-wrapper">
+                                    <MudDataGrid Items="Logs"
+                                                 Dense="true"
+                                                 Hover="true"
+                                                 Virtualize="true"
+                                                 HorizontalScrollbar="true"
+                                                 FixedHeader="true"
+                                                 Height="65vh"
+                                                 Style="width:100%;">
+                                        <Columns>
+                                            <PropertyColumn Title="" Property="x => x" />
+                                        </Columns>
+                                    </MudDataGrid>
+                                </div>
+                            </MudTabPanel>
+
+                        }
                     </MudTabs>
                 }
-
             </MudStep>
             <MudStep Title="Export" Class="center-content">
                 <MudImage Src="/image/checked.png"></MudImage>
@@ -116,19 +145,8 @@
             <MudSpacer />
             @if (ActiveIndex == 1)
             {
-                <MudButton StartIcon="@Icons.Material.Filled.AutoAwesome" Variant="@(IsAiProcessing ? Variant.Text : Variant.Filled)" Color="Color.Warning" OnClick="@(async () => { await AIReprocessing(); })">
-                    @if (IsAiProcessing)
-                    {
-                        <MudProgressCircular Color="Color.Warning" Indeterminate="true" Size="Size.Small" />
-                        <span>@($"({CurrentIndex}/{Products.Count})")</span>
-                    }
-                    else
-                    {
-                        <span>AI Reprocessing</span>
-                    }
-                </MudButton>
 
-                <MudButton StartIcon="@Icons.Material.Filled.Download" Class="px-4" Style="margin: 0 6px;" Variant="Variant.Filled" Color="Color.Tertiary" Disabled="@(IsAiProcessing || IsProcessing)" OnClick="@(() => stepper.NextStepAsync())">Export</MudButton>
+                <MudButton StartIcon="@Icons.Material.Filled.Download" Class="px-4" Style="margin: 0 6px;" Variant="Variant.Filled" Color="Color.Tertiary" Disabled="@(IsProcessing)" OnClick="@(() => stepper.NextStepAsync())">Export</MudButton>
             }
             @if (ActiveIndex == 2)
             {
@@ -140,18 +158,15 @@
 @code {
     MudStepper? _stepper;
     public List<ParsedProduct> Products = new();
-    public List<ParsedProduct> ProductsOld = new();
-    public List<ParsedProduct> ProductsNew = new();
-    public List<ParseLog> logs = new List<ParseLog>();
     public List<string> TabData = new();
     public bool IsImporting { get; set; } = false;
     private int _activeIndex;
     public bool IsProcessing { get; set; } = false;
-    public bool IsAiProcessing { get; set; } = false;
     public int ActiveIndex = 0;
-    private int CurrentIndex = 0;
     CancellationTokenSource _cts = new();
-
+    private double ProcessBar = 0;
+    private double TotalRow = 0;
+    private List<string> Logs = new();
     private readonly Stopwatch _watch = new();
     private async Task OnFilesChanged(IBrowserFile files)
     {
@@ -168,9 +183,11 @@
             memoryStream.Position = 0;
             var excelData = await Excel.ReadAllSheetsAsync(memoryStream);
             await _swal.Close();
+
             if (excelData != null)
             {
-                logs = new();
+                TotalRow = excelData.Sum(x => x.Value.Count);
+                ProcessBar = 0;
                 Products = new();
                 IsImporting = true;
                 IsProcessing = true;
@@ -185,10 +202,21 @@
                         Products.Add(parsed);
                     }
                     TabData = Products.GroupBy(x => x.SheetName).Select(x => x.Key).ToList();
+                    Logs = Products.Where(x => !string.IsNullOrWhiteSpace(x.LogAiResult)).Select(y => y.LogAiResult).ToList();
                 }
-
-                IsProcessing = false;
-                StateHasChanged();
+                try
+                {
+                    await AIReprocessing();
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Error(ex.Message);
+                }
+                finally
+                {
+                    IsProcessing = false;
+                    StateHasChanged();
+                }
             }
             else
             {
@@ -209,7 +237,7 @@
         await _stepper.ResetAsync();
         IsImporting = false;
         IsProcessing = false;
-        IsAiProcessing = false;
+        //IsAiProcessing = false;
         if (_cts.IsCancellationRequested)
         {
             _cts = new();
@@ -219,55 +247,35 @@
 
     private async Task AIReprocessing()
     {
-        if (_cts.Token.IsCancellationRequested)
+        using SemaphoreSlim semaphore = new(5);
+
+        int completed = 0;
+
+        var tasks = Products.Select(async (product, index) =>
         {
-            _cts = new();
-        }
-        if (IsAiProcessing)
-        {
-            _cts.Cancel();
-            IsAiProcessing = false;
-            return;
-        }
-        IsAiProcessing = true;
-        StateHasChanged();
-        await Task.Run(async () =>
-        {
+            await semaphore.WaitAsync();
+
             try
             {
-                ProductsNew = new();
-                ProductsOld = new();
-                CurrentIndex = CurrentIndex == 0 || CurrentIndex + 1 == Products.Count ? 0 : CurrentIndex;
-                for (int i = CurrentIndex; i < Products.Count; i++)
+                var parsed = await ParsedService.ParsedAi(product);
+
+                Products[index] = parsed;
+
+                var current = Interlocked.Increment(ref completed);
+
+                await InvokeAsync(() =>
                 {
-                    if (Products[i].MissingFields.Count == 0) continue;
-                    AppStatic.AIProcess = 0;
-                    var result = await ParsedService.ParsedAi(Products[i]);
-                    if (result.Success)
-                    {
-                        ProductsOld.Add(Products[i]);
-                        Products[i] = result?.Product;
-                        ProductsNew.Add(Products[i]);
-                    }
-                    else Snackbar.Warning(result.Error);
-                    if (_cts.Token.IsCancellationRequested)
-                    {
-                        return;
-                    }
-                    CurrentIndex = i + 1;
-                    await InvokeAsync(StateHasChanged);
-                }
+                    ProcessBar = current;
+                    StateHasChanged();
+                });
             }
-            catch (Exception ex)
+            finally
             {
-                Snackbar.Error(ex.Message);
+                semaphore.Release();
             }
-        }, _cts.Token);
-        IsAiProcessing = false;
-        if (AppStatic.AIProcess > 0)
-        {
-            await _swal.Success($"The AI ​​successfully edited {AppStatic.AIProcess} lines of data.");
-        }
+        });
+
+        await Task.WhenAll(tasks);
     }
 
     private async Task OnActiveIndexChanged(int index)
@@ -281,7 +289,7 @@
         {
             if (Products?.Count != 0)
             {
-                var stream = Excel.Write(Products, logs);
+                var stream = Excel.Write(Products, null);
 
                 using var streamRef = new DotNetStreamReference(stream);
 

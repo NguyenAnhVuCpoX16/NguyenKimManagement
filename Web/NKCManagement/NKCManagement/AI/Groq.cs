@@ -9,8 +9,6 @@ namespace NKCManagement
     {
         public string Provider => "Groq";
         private readonly HttpClient _http = new();
-        private readonly SemaphoreSlim _semaphore = new(1, 1);
-
         public string CreateRequest(List<string> list)
         {
             return $$"""
@@ -67,7 +65,6 @@ namespace NKCManagement
 
         public async Task<string> Prompt(string prompt)
         {
-            await _semaphore.WaitAsync();
             try
             {
                 _http.DefaultRequestHeaders.Clear();
@@ -104,9 +101,9 @@ namespace NKCManagement
             }
             catch (Exception ex)
             {
-                return null;
+                return ex.Message;
             }
-            finally { _semaphore.Release(); }
+
         }
     }
 }
