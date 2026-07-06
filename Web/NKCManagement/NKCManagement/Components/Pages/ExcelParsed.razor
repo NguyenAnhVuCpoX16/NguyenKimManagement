@@ -247,35 +247,29 @@
 
     private async Task AIReprocessing()
     {
-        using SemaphoreSlim semaphore = new(5);
-
-        int completed = 0;
-
-        var tasks = Products.Select(async (product, index) =>
+        var list = new List<ParsedProduct>();
+        for(int i =0; i < Products.Count; i++)
         {
-            await semaphore.WaitAsync();
-
-            try
+            if(i>0 && (i%5==0 || (i + 1) == Products.Count))
             {
-                var parsed = await ParsedService.ParsedAi(product);
+                var result = await ParsedService.ParsedAi(list);
+                var dict = result.ToDictionary(x => (x.SheetName, x.RowIndex));
 
-                Products[index] = parsed;
-
-                var current = Interlocked.Increment(ref completed);
-
-                await InvokeAsync(() =>
+                for (int j = i-5; j <= i; j++)
                 {
-                    ProcessBar = current;
-                    StateHasChanged();
-                });
+                    if (dict.TryGetValue((Products[j].SheetName, Products[i].RowIndex), out var item))
+                    {
+                        Products[j] = item;
+                    }
+                }
+                list.Clear();
+                ProcessBar = i;
             }
-            finally
+            else
             {
-                semaphore.Release();
+                list.Add(Products[i]);
             }
-        });
-
-        await Task.WhenAll(tasks);
+        }
     }
 
     private async Task OnActiveIndexChanged(int index)

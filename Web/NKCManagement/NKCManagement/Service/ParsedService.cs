@@ -20,68 +20,114 @@ namespace NKCManagement
             "MSI", "Gigabyte", "Intel", "Tomko"
         };
 
-        public static string CreateRequestAI(ParsedProduct product)
+        public static string CreateRequestAI(List<ParsedProduct> products)
         {
-            if (product.MissingFields?.Count == 0) return string.Empty;
-            var missingFields = product.MissingFields;
+            if (products == null || products.Count == 0)
+                return string.Empty;
+
             var sb = new StringBuilder();
-            sb.AppendLine("Extract ONLY these fields from the product description.");
+
+            sb.AppendLine("Extract only the requested fields from each product description.");
             sb.AppendLine();
-            sb.AppendLine("Return ONE JSON object only.");
-            sb.AppendLine("Unknown => null.");
-            sb.AppendLine("No markdown.");
-            sb.AppendLine("No explanation.");
+
+            sb.AppendLine("Field definitions:");
+            sb.AppendLine("- Brand: manufacturer");
+            sb.AppendLine("- Model: model name");
+            sb.AppendLine("- PartNumber: P/N, SKU, MPN");
+            sb.AppendLine("- Cpu: processor");
+            sb.AppendLine("- Ram: memory");
+            sb.AppendLine("- Storage: SSD/HDD capacity");
+            sb.AppendLine("- Gpu: graphics");
+            sb.AppendLine("- TinhTrang: condition");
+            sb.AppendLine("- ManHinh: screen");
+            sb.AppendLine("- Pin: battery");
+            sb.AppendLine("- HeDieuHanh: operating system");
+            sb.AppendLine("- Khac: remaining specifications");
             sb.AppendLine();
-            sb.AppendLine("Fields:");
-            foreach (var field in missingFields)
+
+            sb.AppendLine("Rules:");
+            sb.AppendLine("- Return ONLY a JSON array.");
+            sb.AppendLine("- One JSON object per product.");
+            sb.AppendLine("- Each object matches the input order.");
+            sb.AppendLine("- Include ONLY the requested fields.");
+            sb.AppendLine("- Unknown => null.");
+            sb.AppendLine("- Do not guess.");
+            sb.AppendLine("- No markdown.");
+            sb.AppendLine("- No explanation.");
+            sb.AppendLine();
+
+            sb.AppendLine("Products:");
+
+            foreach (var item in products.Where(x => x.MissingFields?.Count > 0))
             {
-                sb.AppendLine($"- {field}");
+                sb.AppendLine($"Fields: {string.Join(", ", item.MissingFields)}");
+                sb.AppendLine($"Description: {item.TenHangRaw}");
+                sb.AppendLine();
             }
-            sb.AppendLine();
-            sb.AppendLine("Input:");
-            sb.AppendLine(product.TenHangRaw);
+
             return sb.ToString();
         }
 
-        public static async Task<ParsedProduct> ParsedAi(ParsedProduct result)
+        public static async Task<List<ParsedProduct>> ParsedAi(List<ParsedProduct> products)
         {
-            var request = CreateRequestAI(result);
-            if (!string.IsNullOrWhiteSpace(request))
-            {
-                try
-                {
-                    var respone = await AppStatic.AiProcess.Prompt(request);
-                    if (respone != null)
-                    {
-                        var aiResult = JsonSerializer.Deserialize<ParsedProduct>(respone.AICleanResponse());
-                        if (aiResult == null)
-                        {
-                            result.LogAiResult = $"{result.SheetName} - {result.RowIndex} - {result.TenHangRaw}: Không deserialize được kết quả AI.";
-                           return result;
-                        }
-                        foreach (var property in AiProperties)
-                        {
-                            var currentValue = property.GetValue(result) as string;
+            var request = CreateRequestAI(products);
 
-                            if (string.IsNullOrWhiteSpace(currentValue))
-                            {
-                                var newValue = property.GetValue(aiResult) as string;
-                                if (!string.IsNullOrWhiteSpace(newValue))
-                                {
-                                    property.SetValue(result, newValue);
-                                }
-                            }
-                        }
-                        return result;
+            if (string.IsNullOrWhiteSpace(request))
+                return products;
+
+            try
+            {
+                var response = await AppStatic.AiProcess.Prompt(request);
+
+                if (response == null)
+                    return products;
+
+                var aiResults = JsonSerializer.Deserialize<List<ParsedProduct>>(response.AICleanResponse());
+
+                if (aiResults == null)
+                {
+                    foreach (var item in products)
+                    {
+                        item.LogAiResult =
+                            $"{item.SheetName} - {item.RowIndex}: Không deserialize được kết quả AI.";
+                    }
+
+                    return products;
+                }
+
+                int count = Math.Min(products.Count, aiResults.Count);
+
+                for (int i = 0; i < count; i++)
+                {
+                    var source = products[i];
+                    var ai = aiResults[i];
+
+                    foreach (var property in AiProperties)
+                    {
+                        var currentValue = property.GetValue(source) as string;
+
+                        if (!string.IsNullOrWhiteSpace(currentValue))
+                            continue;
+
+                        var newValue = property.GetValue(ai) as string;
+
+                        if (!string.IsNullOrWhiteSpace(newValue))
+                            property.SetValue(source, newValue);
                     }
                 }
-                catch (Exception ex)
-                {
-                    result.LogAiResult = $"{result.SheetName} - {result.RowIndex} - {result.TenHangRaw}: {ex.Message}";
-                    return result;
-                }
+
+                return products;
             }
-            return result;
+            catch (Exception ex)
+            {
+                foreach (var item in products)
+                {
+                    item.LogAiResult =
+                        $"{item.SheetName} - {item.RowIndex} - {item.TenHangRaw}: {ex.Message}";
+                }
+
+                return products;
+            }
         }
 
         public static async Task<ParsedProduct> ParseCode(string raw)

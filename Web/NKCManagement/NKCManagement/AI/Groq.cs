@@ -7,6 +7,7 @@ namespace NKCManagement
 {
     public class Groq : IAiService
     {
+        private readonly SemaphoreSlim _semaphore = new(1, 1);
         public string Provider => "Groq";
         private readonly HttpClient _http = new();
         public string CreateRequest(List<string> list)
@@ -65,45 +66,66 @@ namespace NKCManagement
 
         public async Task<string> Prompt(string prompt)
         {
-            try
+            const int maxRetry = 3;
+
+            for (int retry = 0; retry < maxRetry; retry++)
             {
-                _http.DefaultRequestHeaders.Clear();
-                _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {AppStatic.AIKey?.Groq ?? "---------------------------------"}");
-                var body = new
+                try
                 {
-                    model = "llama-3.3-70b-versatile",
-                    messages = new[]
+                    await _semaphore.WaitAsync();
+
+                    _http.DefaultRequestHeaders.Clear();
+                    _http.DefaultRequestHeaders.Authorization =
+                        new System.Net.Http.Headers.AuthenticationHeaderValue(
+                            "Bearer",
+                            AppStatic.AIKey?.Groq ?? "---------------------------------");
+
+                    var body = new
                     {
+                        model = "llama-3.3-70b-versatile",
+                        messages = new[]
+                        {
                     new
                     {
                         role = "user",
                         content = prompt
                     }
                 },
-                    temperature = 0
-                };
-                var json = JsonSerializer.Serialize(body);
+                        temperature = 0
+                    };
 
-                var response = await _http.PostAsync(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    new StringContent(json, Encoding.UTF8, "application/json"));
+                    var json = JsonSerializer.Serialize(body);
 
-                response.EnsureSuccessStatusCode();
-                var result = await response.Content.ReadAsStringAsync();
+                    var response = await _http.PostAsync(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        new StringContent(json, Encoding.UTF8, "application/json"));
 
-                using var doc = JsonDocument.Parse(result);
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        // exponential backoff
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, retry + 1)));
+                        continue;
+                    }
 
-                return doc.RootElement
-                          .GetProperty("choices")[0]
-                          .GetProperty("message")
-                          .GetProperty("content")
-                          .GetString()!;
+                    response.EnsureSuccessStatusCode();
+
+                    var result = await response.Content.ReadAsStringAsync();
+
+                    using var doc = JsonDocument.Parse(result);
+
+                    return doc.RootElement
+                              .GetProperty("choices")[0]
+                              .GetProperty("message")
+                              .GetProperty("content")
+                              .GetString()!;
+                }
+                finally
+                {
+                    _semaphore.Release();
+                }
             }
-            catch (Exception ex)
-            {
-                return ex.Message;
-            }
 
+            throw new HttpRequestException("Retry limit exceeded (429 Too Many Requests).");
         }
     }
 }
